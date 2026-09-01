@@ -4,9 +4,8 @@ A from-scratch implementation of the Transformer model, following
 [*Attention Is All You Need*](https://arxiv.org/abs/1706.03762)
 (Vaswani et al., 2017).
 
-> **Status: scaffold.** This repository currently contains only project
-> metadata (`.gitignore`, `LICENSE`). No implementation exists yet. The
-> sections below describe the *intended* design, not shipped code.
+> **Status: MVP.** A working encoder-decoder Transformer forward pass is
+> implemented and tested. Training loops and decoding strategies are planned.
 
 ## Goal
 
@@ -30,54 +29,74 @@ The model follows the canonical Transformer layout:
 | **Decoder stack**            | `N` identical layers: masked self-attention + encoder-decoder attention + FFN |
 | **Output layer**             | Linear projection to vocabulary size + softmax |
 
-Training objectives, data pipelines, and decoding strategies (greedy,
-beam search) are planned but out of scope for the core implementation.
-
-## Intended layout
+## Package layout
 
 ```
 attention/
-├── model/
-│   ├── __init__.py
-│   ├── attention.py      # scaled dot-product + multi-head attention
-│   ├── embeddings.py     # token embeddings + positional encoding
-│   ├── encoder.py        # encoder layer and stack
-│   ├── decoder.py        # decoder layer and stack
-│   └── transformer.py    # full Transformer model
-├── tests/                # unit tests per component
+├── __init__.py        # public exports
+├── config.py          # TransformerConfig dataclass
+├── attention.py       # scaled dot-product + multi-head attention
+├── embeddings.py      # token embeddings + sinusoidal positional encoding
+├── feedforward.py     # position-wise feed-forward network
+├── encoder.py         # encoder layer and stack
+├── decoder.py         # decoder layer and stack
+├── transformer.py     # full Transformer model
+└── utils.py           # attention-mask helpers
+├── tests/             # unit tests per component
 ├── requirements.txt
 └── README.md
 ```
 
-## Intended usage
+## Usage
 
 ```python
-from attention.model import Transformer
+from attention import Transformer, TransformerConfig
 
-model = Transformer(
+model = Transformer(TransformerConfig(
     vocab_size=32_000,
     d_model=512,
     n_head=8,
     n_layers=6,
     d_ff=2048,
     dropout=0.1,
-)
+    max_seq_len=512,
+    pad_id=0,
+))
 
+# Full encoder-decoder forward pass -> (batch, tgt_len, vocab_size)
 logits = model(src_tokens, tgt_tokens)
+
+# Lower-level building blocks
+memory = model.encode(src_tokens)          # (batch, src_len, d_model)
+decoded = model.decode(tgt_tokens, memory)  # (batch, tgt_len, d_model)
 ```
 
-Configuration mirrors the paper's `base` (d_model=512, 8 heads, 6
-layers) and `big` (d_model=1024, 16 heads, 6 layers) settings.
+`TransformerConfig` defaults to the paper's `base` setting (d_model=512,
+8 heads, 6 layers); `big` is d_model=1024, 16 heads, 6 layers. The
+decoder self-attention is causally masked for you, and source/target
+padding (tokens equal to `pad_id`) is masked automatically.
+
+## Install & test
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+pytest
+```
+
+The core forward pass uses only PyTorch; the mask helpers are pure
+PyTorch tensor ops built from scratch.
 
 ## Roadmap
 
-- [ ] Scaled dot-product attention
-- [ ] Multi-head attention
-- [ ] Positional encoding
-- [ ] Encoder / decoder layers and stacks
-- [ ] Full Transformer forward pass
-- [ ] Unit tests for each component
+- [x] Scaled dot-product attention
+- [x] Multi-head attention
+- [x] Positional encoding
+- [x] Encoder / decoder layers and stacks
+- [x] Full Transformer forward pass
+- [x] Unit tests for each component
 - [ ] Training loop and example dataset
+- [ ] Greedy / beam-search decoding
 
 ## References
 
