@@ -98,6 +98,9 @@ PyTorch tensor ops built from scratch.
 - [ ] Training loop and example dataset
 - [ ] Greedy / beam-search decoding
 
+> Full development, training, and deployment plan:
+> [ROADMAP.md](ROADMAP.md).
+
 ## References
 
 - Vaswani et al., [Attention Is All You Need](https://arxiv.org/abs/1706.03762), 2017.
