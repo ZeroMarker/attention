@@ -89,3 +89,38 @@ def test_training_step_reduces_loss():
 
     loss_end = loss_fn(model(src_eval, tgt_eval).reshape(-1, 100), tgt_eval.reshape(-1))
     assert loss_end < loss0
+
+
+def test_generate_returns_batched_greedy_tokens_and_restores_mode():
+    model = Transformer(make_config())
+    model.train()
+    src = torch.randint(1, 100, (2, 5))
+
+    generated = model.generate(src, bos_id=1, max_new_tokens=4)
+
+    assert generated.shape == (2, 5)
+    assert torch.equal(generated[:, 0], torch.ones(2, dtype=torch.long))
+    assert model.training
+
+
+def test_generate_stops_when_every_sequence_emits_eos():
+    model = Transformer(make_config())
+    model.output_proj.weight.data.zero_()  # argmax is token 0 for every item
+    src = torch.randint(1, 100, (3, 5))
+
+    generated = model.generate(src, bos_id=1, eos_id=0, max_new_tokens=4)
+
+    assert generated.shape == (3, 2)
+    assert torch.equal(generated[:, 1], torch.zeros(3, dtype=torch.long))
+
+
+def test_generate_rejects_target_longer_than_context():
+    model = Transformer(make_config(max_seq_len=4))
+    src = torch.randint(1, 100, (1, 3))
+
+    try:
+        model.generate(src, bos_id=1, max_new_tokens=4)
+    except ValueError as error:
+        assert "max_seq_len" in str(error)
+    else:
+        raise AssertionError("expected generate to reject an oversized target")

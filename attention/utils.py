@@ -65,5 +65,11 @@ def apply_mask(scores: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 
 
 def softmax_attention(scores: torch.Tensor) -> torch.Tensor:
-    """Numerically stable softmax over the last (key) dimension."""
-    return F.softmax(scores, dim=-1)
+    """Numerically stable softmax over the last (key) dimension.
+
+    A completely masked query has only ``-inf`` scores, for which a regular
+    softmax returns ``NaN``.  Treat that row as having zero attention instead;
+    this keeps batches containing an all-padding example finite.
+    """
+    weights = F.softmax(scores, dim=-1)
+    return torch.nan_to_num(weights, nan=0.0)

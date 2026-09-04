@@ -5,8 +5,8 @@ A phased plan for turning the current encoder–decoder Transformer MVP
 milestones, the repo work it implies, and an exit criterion.
 
 > Current state: **MVP** — a from-scratch encoder–decoder Transformer with
-> correct forward pass, masks, and unit tests. No tokenizer, no training
-> loop, no inference engine, no serving.
+> correct forward pass, masks, greedy decoding, and unit tests. No tokenizer,
+> training loop, optimized inference engine, or serving.
 
 ---
 
@@ -32,7 +32,7 @@ Goal: a scaffold that *trains stably* and generates text.
 
 | # | Milestone | Details | Done when |
 |---|---|---|---|
-| 1.1 | Causal LM wrapper | New `causal.py`: `DecoderLayer` without `cross_attn`, causal mask on every self-attention layer, `forward(tokens) -> logits (B, S, V)`, `generate()` stub | Loss decreases on a toy copy task |
+| 1.1 | Causal LM wrapper | New `causal.py`: `DecoderLayer` without `cross_attn`, causal mask on every self-attention layer, `forward(tokens) -> logits (B, S, V)`; reuse the encoder-decoder model's tested greedy generation API | Loss decreases on a toy copy task |
 | 1.2 | Modern building blocks | Replace `LayerNorm`→`RMSNorm`; sinusoidal→**RoPE**; FFN→**SwiGLU**; add **GQA** (grouped-query attention) | Perplexity at least as good as LN/sinusoidal baseline at same budget |
 | 1.3 | KV cache | Cache K/V per layer across decode steps; `generate()` streams one token at a time | Cache hits; memory ~ `2 × n_layers × n_kv_head × seq × d_k` per batch |
 | 1.4 | Tokenizer | Train a **BPE** tokenizer (vocab 32k–64k, add `<pad/unk/bos/eos>`); tokenize encode/trim/mask | Round-trip `decode(encode(x)) == x` on held-out text |

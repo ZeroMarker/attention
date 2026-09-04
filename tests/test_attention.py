@@ -33,6 +33,16 @@ def test_sdpa_masked_positions_get_zero_weight():
     assert torch.allclose(weights.sum(-1), torch.ones(1, 1, 1), atol=1e-6)
 
 
+def test_sdpa_fully_masked_row_is_finite_and_zero():
+    q = torch.randn(1, 1, 1, 8)
+    k = torch.randn(1, 1, 3, 8)
+    v = torch.randn(1, 1, 3, 8)
+    mask = torch.zeros(1, 1, 1, 3, dtype=torch.bool)
+    output, weights = scaled_dot_product_attention(q, k, v, mask)
+    assert torch.equal(weights, torch.zeros_like(weights))
+    assert torch.equal(output, torch.zeros_like(output))
+
+
 def test_sdpa_stateful_dropout():
     q = torch.randn(2, 2, 4, 8)
     k = torch.randn(2, 2, 4, 8)

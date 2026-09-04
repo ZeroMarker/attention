@@ -93,3 +93,74 @@ class Transformer(nn.Module):
         memory = self.encode(src, src_mask)
         decoded = self.decode(tgt, memory, tgt_mask, mem_mask)
         return self.output_proj(decoded)
+
+    @torch.no_grad()
+    def generate(
+        self,
+        src: torch.Tensor,
+        bos_id: int,
+        eos_id: int | None = None,
+        max_new_tokens: int = 64,
+    ) -> torch.Tensor:
+        """Greedily decode target tokens for a batch of source sequences.
+
+        The returned tensor includes the initial beginning-of-sequence token.
+        Once an item emits ``eos_id``, later positions for that item are padded
+        with :attr:`TransformerConfig.pad_id`. Decoding stops early when every
+        item in the batch has emitted EOS.
+
+        Args:
+            src: Source token IDs with shape ``(batch, src_len)``.
+            bos_id: Token ID used to start every decoded sequence.
+            eos_id: Optional token ID that stops decoding.
+            max_new_tokens: Maximum number of tokens to append after BOS.
+        """
+        if src.ndim != 2:
+            raise ValueError("src must have shape (batch, src_len)")
+        if src.size(0) == 0:
+            raise ValueError("src batch must not be empty")
+        if max_new_tokens < 1:
+            raise ValueError("max_new_tokens must be at least 1")
+        if max_new_tokens + 1 > self.config.max_seq_len:
+            raise ValueError(
+                "requested target length exceeds config.max_seq_len "
+                f"({max_new_tokens + 1} > {self.config.max_seq_len})"
+            )
+        for name, token_id in (("bos_id", bos_id), ("eos_id", eos_id)):
+            if token_id is not None and not 0 <= token_id < self.config.vocab_size:
+                raise ValueError(
+                    f"{name} must be between 0 and {self.config.vocab_size - 1}"
+                )
+
+        was_training = self.training
+        self.eval()
+        try:
+            src_mask = build_self_attention_mask(
+                src, self.config.pad_id, causal=False
+            )
+            mem_mask = build_cross_attention_mask(src, self.config.pad_id)
+            memory = self.encode(src, src_mask)
+            generated = torch.full(
+                (src.size(0), 1), bos_id, dtype=src.dtype, device=src.device
+            )
+            finished = torch.zeros(src.size(0), dtype=torch.bool, device=src.device)
+
+            for _ in range(max_new_tokens):
+                decoded = self.decode(generated, memory, mem_mask=mem_mask)
+                next_token = self.output_proj(decoded[:, -1]).argmax(dim=-1)
+
+                if eos_id is not None:
+                    next_token = torch.where(
+                        finished,
+                        torch.full_like(next_token, self.config.pad_id),
+                        next_token,
+                    )
+                    finished |= next_token.eq(eos_id)
+
+                generated = torch.cat((generated, next_token.unsqueeze(1)), dim=1)
+                if eos_id is not None and finished.all():
+                    break
+
+            return generated
+        finally:
+            self.train(was_training)

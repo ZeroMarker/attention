@@ -69,6 +69,14 @@ logits = model(src_tokens, tgt_tokens)
 # Lower-level building blocks
 memory = model.encode(src_tokens)          # (batch, src_len, d_model)
 decoded = model.decode(tgt_tokens, memory)  # (batch, tgt_len, d_model)
+
+# Greedy sequence generation; output includes the initial BOS token
+generated = model.generate(
+    src_tokens,
+    bos_id=1,
+    eos_id=2,
+    max_new_tokens=64,
+)
 ```
 
 `TransformerConfig` defaults to the paper's `base` setting (d_model=512,
@@ -81,7 +89,7 @@ padding (tokens equal to `pad_id`) is masked automatically.
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-pytest
+python -m pytest
 ```
 
 The core forward pass uses only PyTorch; the mask helpers are pure
@@ -96,7 +104,8 @@ PyTorch tensor ops built from scratch.
 - [x] Full Transformer forward pass
 - [x] Unit tests for each component
 - [ ] Training loop and example dataset
-- [ ] Greedy / beam-search decoding
+- [x] Greedy decoding
+- [ ] Sampling / beam-search decoding
 
 > Full development, training, and deployment plan:
 > [ROADMAP.md](ROADMAP.md).
