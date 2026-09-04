@@ -38,10 +38,10 @@ def scaled_dot_product_attention(
     scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
     scores = apply_mask(scores, mask)
     weights = softmax_attention(scores)
-    attended = weights
+    probs = weights
     if dropout is not None:
-        attended = dropout(attended)
-    output = torch.matmul(attended, v)
+        probs = dropout(probs)
+    output = torch.matmul(probs, v)
     return output, weights
 
 

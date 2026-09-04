@@ -46,9 +46,12 @@ class PositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(positions * div_term)
         pe = pe.unsqueeze(0)  # (1, max_len, d_model)
 
-        self.register_buffer("pe", pe)
+        self.register_buffer("pe", pe, persistent=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Add positional encoding to ``x`` of shape ``(batch, seq, d_model)``."""
-        x = x + self.pe[:, : x.size(1)]
+        seq_len = x.size(1)
+        if seq_len > self.pe.size(1):
+            raise ValueError(f"sequence length {seq_len} exceeds max_len {self.pe.size(1)}")
+        x = x + self.pe[:, :seq_len].to(x.device)
         return self.dropout(x)

@@ -30,16 +30,19 @@ def build_self_attention_mask(
 
     When ``causal`` is True the mask is lower-triangular (a position may only
     attend to itself and earlier positions) and is ANDed with the padding mask.
+    Defaults to the device of ``tokens`` so the padding and causal parts
+    always live on the same device.
     """
+    if device is None:
+        device = tokens.device
     seq = tokens.size(-1)
     pad = make_padding_mask(tokens, pad_id)  # (batch, seq)
     pad = pad.unsqueeze(1).unsqueeze(2)  # (batch, 1, 1, seq)
-    mask = pad.expand(-1, -1, seq, seq)
+    mask = pad.expand(-1, -1, seq, seq).to(device)
     if causal:
         causal_mask = make_causal_mask(seq, device).unsqueeze(0).unsqueeze(0)
         mask = mask & causal_mask
     return mask
-
 
 def build_cross_attention_mask(
     src_tokens: torch.Tensor,
@@ -47,8 +50,10 @@ def build_cross_attention_mask(
     device: torch.device | None = None,
 ) -> torch.Tensor:
     """Build a ``(batch, 1, 1, src_len)`` mask for encoder-decoder attention."""
+    if device is None:
+        device = src_tokens.device
     pad = make_padding_mask(src_tokens, pad_id)  # (batch, src_len)
-    return pad.unsqueeze(1).unsqueeze(2)  # (batch, 1, 1, src_len)
+    return pad.unsqueeze(1).unsqueeze(2).to(device)  # (batch, 1, 1, src_len)
 
 
 def apply_mask(scores: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
