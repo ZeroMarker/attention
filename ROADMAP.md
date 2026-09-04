@@ -87,7 +87,7 @@ Goal: a safe, efficient serving stack.
 
 | # | Milestone | Details | Done when |
 |---|---|---|---|
-| 4.1 | Generation | Greedy + sampling (temperature, top-k, top-p, min-p); seeded + streaming | Deterministic seeded output; stable streaming |
+| 4.1 | Generation | Greedy baseline is complete for the encoder–decoder model. Add sampling (temperature, top-k, top-p, min-p), seeded generation, and streaming to the future decoder-only model. | Deterministic seeded output; stable streaming |
 | 4.2 | Serving engine | **vLLM** (PagedAttention, continuous batching) or TGI/TensorRT-LLM; OpenAI-compatible HTTP API | Throughput/latency benchmarks (tokens/s, TTFT, TBT) |
 | 4.3 | Quantization | int8 / int4 (GPTQ, AWQ, bitsandbytes), FP8; KV-cache quantization | Quality drop measured on eval suite; memory reduced |
 | 4.4 | Hardware | Single → multi-GPU; tensor parallel for >7B | Cost/latency/throughput tradeoff documented |

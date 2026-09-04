@@ -1,58 +1,71 @@
 # Attention Is All You Need
 
-A from-scratch implementation of the Transformer model, following
-[*Attention Is All You Need*](https://arxiv.org/abs/1706.03762)
+A readable, from-scratch PyTorch implementation of the encoder–decoder
+Transformer from [*Attention Is All You Need*](https://arxiv.org/abs/1706.03762)
 (Vaswani et al., 2017).
 
-> **Status: MVP.** A working encoder-decoder Transformer forward pass is
-> implemented and tested. Training loops and decoding strategies are planned.
+> **Status: MVP.** The model supports training forward passes and batched
+> greedy decoding. A training pipeline, tokenizer, sampling, and beam search
+> are not included yet.
 
-## Goal
+## What is implemented
 
-Build the Transformer end-to-end in Python — from the primitive
-(scaled dot-product attention) up to a full encoder–decoder model — with
-readable, dependency-light code that makes every component's math
-explicit. The primary goal is understanding: each building block is
-written out and documented, not hidden behind a framework abstraction.
+- Scaled dot-product and multi-head attention
+- Fixed sinusoidal positional encoding
+- Position-wise feed-forward networks with ReLU or GELU
+- Post-norm encoder and decoder stacks with residual connections
+- Automatic source-padding, target-padding, causal, and cross-attention masks
+- Batched greedy generation with optional EOS early stopping
+- Tests for components, masking, end-to-end shape behavior, training, and
+  generation
+
+The implementation intentionally uses explicit PyTorch tensor operations
+instead of `torch.nn.Transformer`, making the model useful as a compact
+educational reference.
 
 ## Architecture
 
-The model follows the canonical Transformer layout:
+The model follows the original encoder–decoder architecture:
 
-| Component                    | Role |
-|------------------------------|------|
-| **Scaled dot-product attention** | `softmax(QKᵀ / √dₖ)V` — the core attention primitive |
-| **Multi-head attention**     | Parallel attention heads projected over the full representation |
-| **Position-wise FFN**        | Two linear layers with a ReLU (or GELU) activation, applied per position |
-| **Positional encoding**      | Sinusoidal (or learned) encoding so attention can use order |
-| **Encoder stack**            | `N` identical layers: multi-head self-attention + FFN, with residual connections and layer norm |
-| **Decoder stack**            | `N` identical layers: masked self-attention + encoder-decoder attention + FFN |
-| **Output layer**             | Linear projection to vocabulary size + softmax |
+| Component | Role |
+|---|---|
+| Scaled dot-product attention | Computes `softmax(QKᵀ / √dₖ)V` |
+| Multi-head attention | Runs attention in parallel learned subspaces |
+| Position-wise FFN | Applies two linear layers independently at each position |
+| Positional encoding | Adds fixed sinusoidal position information |
+| Encoder | Repeats self-attention and FFN sublayers |
+| Decoder | Repeats causal self-attention, cross-attention, and FFN sublayers |
+| Output projection | Maps decoder states to vocabulary logits; no softmax is applied |
 
-## Package layout
+Every sublayer uses a residual connection followed by layer normalization,
+matching the post-norm layout in the paper.
 
-```
-attention/
-├── __init__.py        # public exports
-├── config.py          # TransformerConfig dataclass
-├── attention.py       # scaled dot-product + multi-head attention
-├── embeddings.py      # token embeddings + sinusoidal positional encoding
-├── feedforward.py     # position-wise feed-forward network
-├── encoder.py         # encoder layer and stack
-├── decoder.py         # decoder layer and stack
-├── transformer.py     # full Transformer model
-└── utils.py           # attention-mask helpers
-├── tests/             # unit tests per component
-├── requirements.txt
-└── README.md
+## Installation
+
+Python 3.10 or newer is required.
+
+```bash
+git clone https://github.com/ZeroMarker/attention.git
+cd attention
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## Usage
+Run the test suite from the repository root:
+
+```bash
+python -m pytest
+```
+
+## Quick start
 
 ```python
+import torch
+
 from attention import Transformer, TransformerConfig
 
-model = Transformer(TransformerConfig(
+config = TransformerConfig(
     vocab_size=32_000,
     d_model=512,
     n_head=8,
@@ -61,16 +74,51 @@ model = Transformer(TransformerConfig(
     dropout=0.1,
     max_seq_len=512,
     pad_id=0,
-))
+)
+model = Transformer(config)
 
-# Full encoder-decoder forward pass -> (batch, tgt_len, vocab_size)
+src_tokens = torch.randint(1, config.vocab_size, (2, 16))
+tgt_tokens = torch.randint(1, config.vocab_size, (2, 12))
+
+# Shape: (batch, target_length, vocab_size). Values are raw logits.
 logits = model(src_tokens, tgt_tokens)
 
-# Lower-level building blocks
-memory = model.encode(src_tokens)          # (batch, src_len, d_model)
-decoded = model.decode(tgt_tokens, memory)  # (batch, tgt_len, d_model)
+# The encoder and decoder can also be called independently.
+memory = model.encode(src_tokens)           # (2, 16, 512)
+decoded = model.decode(tgt_tokens, memory)  # (2, 12, 512)
+```
 
-# Greedy sequence generation; output includes the initial BOS token
+The decoder applies a causal mask automatically. Tokens equal to `pad_id` are
+excluded as attention keys in source and target padding masks.
+
+## Training inputs
+
+`Transformer.forward(src, tgt)` returns logits for each token in `tgt`. For
+teacher-forced next-token training, pass a right-shifted target to the decoder
+and compare its logits with the unshifted labels:
+
+```python
+import torch.nn.functional as F
+
+# full_target starts with BOS and ends with EOS/padding
+decoder_input = full_target[:, :-1]
+labels = full_target[:, 1:]
+
+logits = model(src_tokens, decoder_input)
+loss = F.cross_entropy(
+    logits.reshape(-1, config.vocab_size),
+    labels.reshape(-1),
+    ignore_index=config.pad_id,
+)
+```
+
+This repository provides the model components only; optimizer setup, batching,
+checkpointing, and dataset code remain roadmap items.
+
+## Greedy generation
+
+```python
+model.eval()
 generated = model.generate(
     src_tokens,
     bos_id=1,
@@ -79,40 +127,85 @@ generated = model.generate(
 )
 ```
 
-`TransformerConfig` defaults to the paper's `base` setting (d_model=512,
-8 heads, 6 layers); `big` is d_model=1024, 16 heads, 6 layers. The
-decoder self-attention is causally masked for you, and source/target
-padding (tokens equal to `pad_id`) is masked automatically.
+`generate()`:
 
-## Install & test
+- encodes the source once, then selects `argmax` at each decoder step;
+- returns shape `(batch, generated_length)` including the initial BOS token;
+- stops early when every sequence emits `eos_id`, when one is supplied;
+- pads positions after EOS with `config.pad_id` while other batch items finish;
+- runs without gradient tracking and restores the model's previous train/eval
+  mode afterward; and
+- requires `max_new_tokens + 1 <= config.max_seq_len`.
 
-```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-python -m pytest
+Generation currently recomputes decoder attention over the full generated
+prefix at each step. A KV cache and alternative decoding strategies are
+planned.
+
+## Configuration
+
+`TransformerConfig` is an immutable dataclass with the following defaults:
+
+| Field | Default | Meaning |
+|---|---:|---|
+| `vocab_size` | `32000` | Number of token IDs |
+| `d_model` | `512` | Embedding and hidden-state width |
+| `n_head` | `8` | Number of attention heads |
+| `n_layers` | `6` | Number of layers in each stack |
+| `d_ff` | `2048` | Feed-forward hidden width |
+| `dropout` | `0.1` | Dropout probability |
+| `max_seq_len` | `512` | Maximum source or target length |
+| `activation` | `"relu"` | FFN activation: `"relu"` or `"gelu"` |
+| `pad_id` | `0` | Token ID treated as padding |
+
+`d_model` must be divisible by `n_head`. The defaults match the main dimensions
+of the paper's base model; all fields can be overridden directly.
+
+## Mask convention
+
+Masks are boolean tensors where `True` means “attend” and `False` means
+“masked out.” Helper functions in `attention.utils` produce:
+
+| Helper | Shape |
+|---|---|
+| `make_padding_mask(tokens, pad_id)` | `(batch, sequence)` |
+| `make_causal_mask(sequence_length)` | `(sequence, sequence)` |
+| `build_self_attention_mask(...)` | `(batch, 1, query, key)` |
+| `build_cross_attention_mask(...)` | `(batch, 1, 1, source_length)` |
+
+Fully masked attention rows safely produce zero weights instead of NaNs.
+
+## Repository layout
+
+```text
+.
+├── attention/
+│   ├── __init__.py        # public exports
+│   ├── attention.py       # scaled dot-product and multi-head attention
+│   ├── config.py          # TransformerConfig
+│   ├── decoder.py         # decoder layer and stack
+│   ├── embeddings.py      # token and positional embeddings
+│   ├── encoder.py         # encoder layer and stack
+│   ├── feedforward.py     # position-wise feed-forward network
+│   ├── transformer.py     # complete model and greedy generation
+│   └── utils.py           # attention-mask helpers
+├── tests/                 # unit and integration tests
+├── ROADMAP.md             # longer-term development plan
+└── requirements.txt
 ```
-
-The core forward pass uses only PyTorch; the mask helpers are pure
-PyTorch tensor ops built from scratch.
 
 ## Roadmap
 
-- [x] Scaled dot-product attention
-- [x] Multi-head attention
-- [x] Positional encoding
-- [x] Encoder / decoder layers and stacks
-- [x] Full Transformer forward pass
-- [x] Unit tests for each component
+- [x] Core encoder–decoder Transformer
+- [x] Automatic attention masks
+- [x] Batched greedy decoding
+- [x] Component and end-to-end tests
 - [ ] Training loop and example dataset
-- [x] Greedy decoding
-- [ ] Sampling / beam-search decoding
+- [ ] Tokenizer
+- [ ] KV cache
+- [ ] Sampling and beam-search decoding
 
-> Full development, training, and deployment plan:
-> [ROADMAP.md](ROADMAP.md).
-
-## References
-
-- Vaswani et al., [Attention Is All You Need](https://arxiv.org/abs/1706.03762), 2017.
+See [ROADMAP.md](ROADMAP.md) for the full model-development, training,
+evaluation, and deployment plan.
 
 ## License
 
