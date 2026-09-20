@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from .attention import MultiHeadAttention, scaled_dot_product_attention
+from .causal import CausalLM
 from .config import TransformerConfig
 from .decoder import Decoder, DecoderLayer
 from .embeddings import PositionalEncoding, TokenEmbedding
@@ -10,6 +11,7 @@ from .feedforward import PositionwiseFeedForward
 from .transformer import Transformer
 
 __all__ = [
+    "CausalLM",
     "Decoder",
     "DecoderLayer",
     "Encoder",
